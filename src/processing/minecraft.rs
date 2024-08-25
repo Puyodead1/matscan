@@ -37,7 +37,7 @@ impl ProcessableProtocol for protocols::Minecraft {
     ) -> Option<BulkUpdate> {
         let data = String::from_utf8_lossy(data);
 
-        let passive_fingerprint = generate_passive_fingerprint(&data).ok();
+        // let passive_fingerprint = generate_passive_fingerprint(&data).ok();
 
         let data: serde_json::Value = match serde_json::from_str(&data) {
             Ok(json) => json,
@@ -178,7 +178,7 @@ impl ProcessableProtocol for protocols::Minecraft {
                         let servers_coll = database.servers_coll();
                         let current_data = servers_coll
                             .find_one(doc! {
-                                "addr": u32::from(*target.ip()),
+                                "ip": target.ip().to_string(),
                                 "port": target.port() as u32
                             })
                             .await
@@ -218,7 +218,7 @@ impl ProcessableProtocol for protocols::Minecraft {
             shared.lock().cached_servers.insert(target, data.clone());
         }
 
-        if let Some(cleaned_data) = clean_response_data(&data, passive_fingerprint) {
+        if let Some(cleaned_data) = clean_response_data(&data) {
             let mongo_update = doc! { "$set": cleaned_data };
             match create_bulk_update(database, &target, mongo_update) {
                 Ok(r) => Some(r),
@@ -235,10 +235,7 @@ impl ProcessableProtocol for protocols::Minecraft {
 
 /// Clean up the response data from the server into something we can insert into
 /// our database.
-fn clean_response_data(
-    data: &serde_json::Value,
-    passive_minecraft_fingerprint: Option<PassiveMinecraftFingerprint>,
-) -> Option<Document> {
+fn clean_response_data(data: &serde_json::Value) -> Option<Document> {
     let data_serde_json = data.as_object()?.to_owned();
     let mut data = Bson::deserialize(data).ok()?;
     let mut data = data.as_document_mut()?.to_owned();
@@ -260,17 +257,17 @@ fn clean_response_data(
     );
 
     // maybe in the future we can store favicons in a separate collection
-    if data.contains_key("favicon") {
-        data.insert("favicon", Bson::Boolean(true));
-    }
+    // if data.contains_key("favicon") {
+    //     data.insert("favicon", Bson::Boolean(true));
+    // }
 
     if data.contains_key("modinfo") {
         // forge server
-        data.insert("modinfo", Bson::Boolean(true));
+        data.insert("isModded", Bson::Boolean(true));
     }
 
     if data.contains_key("forgeData") {
-        data.insert("forgeData", Bson::Boolean(true));
+        data.insert("isModded", Bson::Boolean(true));
     }
 
     let version_name = data
@@ -354,6 +351,7 @@ fn clean_response_data(
                 }
             }
 
+            // TODO:
             let mut player_doc = Document::new();
             player_doc.insert(
                 "lastSeen",
@@ -369,51 +367,55 @@ fn clean_response_data(
 
     if !fake_sample {
         if mixed_online_mode {
-            extra_data.insert("onlineMode", Bson::Null);
+            extra_data.insert("isCracked", Bson::Null);
         } else if let Some(is_online_mode) = is_online_mode {
-            extra_data.insert("onlineMode", Bson::Boolean(is_online_mode));
+            extra_data.insert("isCracked", Bson::Boolean(is_online_mode));
         }
-        if has_players {
-            extra_data.insert(
-                "lastActive",
-                Bson::DateTime(bson::DateTime::from_system_time(SystemTime::now())),
-            );
-        } else {
-            extra_data.insert(
-                "lastEmpty",
-                Bson::DateTime(bson::DateTime::from_system_time(SystemTime::now())),
-            );
-        }
+        extra_data.insert(
+            "lastSeen",
+            Bson::DateTime(bson::DateTime::from_system_time(SystemTime::now())),
+        );
+        // if has_players {
+        //     extra_data.insert(
+        //         "lastActive",
+        //         Bson::DateTime(bson::DateTime::from_system_time(SystemTime::now())),
+        //     );
+        // } else {
+        //     extra_data.insert(
+        //         "lastEmpty",
+        //         Bson::DateTime(bson::DateTime::from_system_time(SystemTime::now())),
+        //     );
+        // }
     }
 
     let mut final_cleaned = doc! {
-        "timestamp": bson::DateTime::from_system_time(SystemTime::now()),
-        "minecraft": data,
+        "updatedAt": bson::DateTime::from_system_time(SystemTime::now()),
+        // "minecraft": data,
     };
     if !fake_sample {
         final_cleaned.extend(players_data);
     }
 
-    if let Some(passive_minecraft_fingerprint) = passive_minecraft_fingerprint {
-        final_cleaned.insert(
-            "fingerprint.minecraft.incorrectOrder",
-            Bson::Boolean(passive_minecraft_fingerprint.incorrect_order),
-        );
-        if let Some(field_order) = passive_minecraft_fingerprint.field_order {
-            final_cleaned.insert(
-                "fingerprint.minecraft.fieldOrder",
-                Bson::String(field_order),
-            );
-        }
-        final_cleaned.insert(
-            "fingerprint.minecraft.emptySample",
-            Bson::Boolean(passive_minecraft_fingerprint.empty_sample),
-        );
-        final_cleaned.insert(
-            "fingerprint.minecraft.emptyFavicon",
-            Bson::Boolean(passive_minecraft_fingerprint.empty_favicon),
-        );
-    }
+    // if let Some(passive_minecraft_fingerprint) = passive_minecraft_fingerprint {
+    //     final_cleaned.insert(
+    //         "fingerprint.minecraft.incorrectOrder",
+    //         Bson::Boolean(passive_minecraft_fingerprint.incorrect_order),
+    //     );
+    //     if let Some(field_order) = passive_minecraft_fingerprint.field_order {
+    //         final_cleaned.insert(
+    //             "fingerprint.minecraft.fieldOrder",
+    //             Bson::String(field_order),
+    //         );
+    //     }
+    //     final_cleaned.insert(
+    //         "fingerprint.minecraft.emptySample",
+    //         Bson::Boolean(passive_minecraft_fingerprint.empty_sample),
+    //     );
+    //     final_cleaned.insert(
+    //         "fingerprint.minecraft.emptyFavicon",
+    //         Bson::Boolean(passive_minecraft_fingerprint.empty_favicon),
+    //     );
+    // }
 
     final_cleaned.extend(extra_data);
 
@@ -432,18 +434,14 @@ pub fn create_bulk_update(
 
     fn determine_hash(mongo_update: &Document) -> anyhow::Result<u64> {
         let set_data = mongo_update.get_document("$set")?;
-        let minecraft = set_data.get_document("minecraft")?;
+        // let minecraft = set_data.get_document("minecraft")?;
 
-        let version = minecraft.get_document("version")?;
+        // let version = set_data.get_document("version")?;
 
-        let description = minecraft.get_str("description").unwrap_or_default();
-        let version_name = version.get_str("name").unwrap_or_default();
-        let version_protocol = database::get_i32(version, "protocol").unwrap_or_default();
-        let max_players = minecraft
-            .get_document("players")
-            .ok()
-            .and_then(|p| database::get_i32(p, "max"))
-            .unwrap_or_default();
+        let description = set_data.get_str("description").unwrap_or_default();
+        let version_name = set_data.get_str("version").unwrap_or_default();
+        let version_protocol = database::get_i32(set_data, "protocol").unwrap_or_default();
+        let max_players = database::get_i32(set_data, "maxPlayers").unwrap_or_default();
 
         let mut hasher = DefaultHasher::new();
         (description, version_name, version_protocol, max_players).hash(&mut hasher);
@@ -501,7 +499,7 @@ pub fn create_bulk_update(
 
     Ok(BulkUpdate {
         query: doc! {
-            "addr": { "$eq": u32::from(*target.ip()) },
+            "ip": { "$eq": u32::from(*target.ip()) },
             "port": { "$eq": target.port() as u32 }
         },
         update: mongo_update,
@@ -525,106 +523,110 @@ async fn send_to_webhook(webhook_url: String, message: String) {
     }
 }
 
-pub struct PassiveMinecraftFingerprint {
-    pub incorrect_order: bool,
-    pub field_order: Option<String>,
-    /// Servers shouldn't have the sample field if there are no players online.
-    pub empty_sample: bool,
-    /// A favicon that has the string ""
-    pub empty_favicon: bool,
-}
-pub fn generate_passive_fingerprint(data: &str) -> anyhow::Result<PassiveMinecraftFingerprint> {
-    let data: serde_json::Value = serde_json::from_str(data)?;
+// pub struct PassiveMinecraftFingerprint {
+//     pub incorrect_order: bool,
+//     pub field_order: Option<String>,
+//     /// Servers shouldn't have the sample field if there are no players
+// online.     pub empty_sample: bool,
+//     /// A favicon that has the string ""
+//     pub empty_favicon: bool,
+// }
+// pub fn generate_passive_fingerprint(data: &str) ->
+// anyhow::Result<PassiveMinecraftFingerprint> {     let data: serde_json::Value
+// = serde_json::from_str(data)?;
 
-    let protocol_version = data
-        .get("version")
-        .and_then(|s| s.as_object())
-        .and_then(|s| s.get("protocol"))
-        .and_then(|s| s.as_u64())
-        .unwrap_or_default();
+//     let protocol_version = data
+//         .get("version")
+//         .and_then(|s| s.as_object())
+//         .and_then(|s| s.get("protocol"))
+//         .and_then(|s| s.as_u64())
+//         .unwrap_or_default();
 
-    let empty_favicon = data.get("favicon").map(|s| s.as_str()) == Some(Some(""));
+//     let empty_favicon = data.get("favicon").map(|s| s.as_str()) ==
+// Some(Some(""));
 
-    let mut incorrect_order = false;
-    let mut field_order = None;
-    let mut empty_sample = false;
+//     let mut incorrect_order = false;
+//     let mut field_order = None;
+//     let mut empty_sample = false;
 
-    // the correct field order is description, players, version (ignore everything
-    // else)
+//     // the correct field order is description, players, version (ignore
+// everything     // else)
 
-    if let Some(data) = data.as_object() {
-        // mojang changed the order in 23w07a/1.19.4
-        let correct_order = if matches!(protocol_version, 1073741943.. | 762..=0x40000000 ) {
-            ["version", "description", "players"]
-        } else {
-            ["description", "players", "version"]
-        };
+//     if let Some(data) = data.as_object() {
+//         // mojang changed the order in 23w07a/1.19.4
+//         let correct_order = if matches!(protocol_version, 1073741943.. |
+// 762..=0x40000000 ) {             ["version", "description", "players"]
+//         } else {
+//             ["description", "players", "version"]
+//         };
 
-        let keys = data
-            .keys()
-            .filter(|&k| correct_order.contains(&k.as_str()))
-            .cloned()
-            .collect::<Vec<_>>();
+//         let keys = data
+//             .keys()
+//             .filter(|&k| correct_order.contains(&k.as_str()))
+//             .cloned()
+//             .collect::<Vec<_>>();
 
-        let players = data.get("players").and_then(|s| s.as_object());
-        let version = data.get("version").and_then(|s| s.as_object());
+//         let players = data.get("players").and_then(|s| s.as_object());
+//         let version = data.get("version").and_then(|s| s.as_object());
 
-        let correct_players_order = ["max", "online"];
-        let correct_version_order = ["name", "protocol"];
+//         let correct_players_order = ["max", "online"];
+//         let correct_version_order = ["name", "protocol"];
 
-        let players_keys = players
-            .map(|s| {
-                s.keys()
-                    .filter(|&k| correct_players_order.contains(&k.as_str()))
-                    .cloned()
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        let version_keys = version
-            .map(|s| {
-                s.keys()
-                    .filter(|&k| correct_version_order.contains(&k.as_str()))
-                    .cloned()
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+//         let players_keys = players
+//             .map(|s| {
+//                 s.keys()
+//                     .filter(|&k| correct_players_order.contains(&k.as_str()))
+//                     .cloned()
+//                     .collect::<Vec<_>>()
+//             })
+//             .unwrap_or_default();
+//         let version_keys = version
+//             .map(|s| {
+//                 s.keys()
+//                     .filter(|&k| correct_version_order.contains(&k.as_str()))
+//                     .cloned()
+//                     .collect::<Vec<_>>()
+//             })
+//             .unwrap_or_default();
 
-        if keys != correct_order
-            || players_keys != correct_players_order
-            || version_keys != correct_version_order
-        {
-            incorrect_order = true;
-        }
+//         // if keys != correct_order
+//         //     || players_keys != correct_players_order
+//         //     || version_keys != correct_version_order
+//         // {
+//         //     incorrect_order = true;
+//         // }
 
-        if incorrect_order {
-            let mut field_order_string = String::new();
-            for (i, key) in keys.iter().enumerate() {
-                field_order_string.push_str(key);
-                if key == "players" && players_keys != correct_players_order {
-                    field_order_string.push_str(format!("({})", players_keys.join(",")).as_str());
-                } else if key == "version" && version_keys != correct_version_order {
-                    field_order_string.push_str(format!("({})", version_keys.join(",")).as_str());
-                }
-                if i != keys.len() - 1 {
-                    field_order_string.push(',');
-                }
-            }
-            field_order = Some(field_order_string);
-        }
+//         // if incorrect_order {
+//         //     let mut field_order_string = String::new();
+//         //     for (i, key) in keys.iter().enumerate() {
+//         //         field_order_string.push_str(key);
+//         //         if key == "players" && players_keys !=
+// correct_players_order {         //
+// field_order_string.push_str(format!("({})",
+// players_keys.join(",")).as_str());         //         } else if key ==
+// "version" && version_keys != correct_version_order {         //
+// field_order_string.push_str(format!("({})",
+// version_keys.join(",")).as_str());         //         }
+//         //         if i != keys.len() - 1 {
+//         //             field_order_string.push(',');
+//         //         }
+//         //     }
+//         //     field_order = Some(field_order_string);
+//         // }
 
-        if let Some(players) = data.get("players").and_then(|s| s.as_object()) {
-            if let Some(sample) = players.get("sample").and_then(|s| s.as_array()) {
-                if sample.is_empty() {
-                    empty_sample = true;
-                }
-            }
-        }
-    }
+//         if let Some(players) = data.get("players").and_then(|s|
+// s.as_object()) {             if let Some(sample) =
+// players.get("sample").and_then(|s| s.as_array()) {                 if
+// sample.is_empty() {                     empty_sample = true;
+//                 }
+//             }
+//         }
+//     }
 
-    Ok(PassiveMinecraftFingerprint {
-        incorrect_order,
-        field_order,
-        empty_sample,
-        empty_favicon,
-    })
-}
+//     Ok(PassiveMinecraftFingerprint {
+//         incorrect_order,
+//         field_order,
+//         empty_sample,
+//         empty_favicon,
+//     })
+// }

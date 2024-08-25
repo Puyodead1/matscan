@@ -80,15 +80,12 @@ impl ProcessableProtocol for protocols::MinecraftFingerprinting {
             "fingerprint.activeMinecraft.timestamp": Bson::DateTime(bson::DateTime::from_system_time(SystemTime::now())),
         };
         if server_type != ServerType::Unknown {
-            mongo_update.insert(
-                "fingerprint.activeMinecraft.software",
-                server_type.to_string(),
-            );
+            mongo_update.insert("software", server_type.to_string());
         }
 
         Some(BulkUpdate {
             query: doc! {
-                "addr": { "$eq": u32::from(*target.ip()) },
+                "ip": { "$eq": u32::from(*target.ip()) },
                 "port": { "$eq": target.port() as u32 }
             },
             update: doc! { "$set": mongo_update },

@@ -32,9 +32,7 @@ pub async fn get_addrs_and_protocol_versions(
     println!("filter: {:?}", filter);
 
     let mut pipeline: Vec<Document> = vec![doc! { "$match": filter }];
-    pipeline.push(
-        doc! { "$project": { "addr": 1, "port": 1, "minecraft.version.protocol": 1, "_id": 0 } },
-    );
+    pipeline.push(doc! { "$project": { "ip": 1, "port": 1, "protocol": 1, "_id": 0 } });
     pipeline.push(doc! { "$sort": { "timestamp": 1 } });
 
     let mut cursor = database
@@ -45,15 +43,15 @@ pub async fn get_addrs_and_protocol_versions(
         .unwrap();
 
     while let Some(Ok(doc)) = cursor.next().await {
-        if let Some(addr) = database::get_u32(&doc, "addr") {
+        if let Some(addr) = database::get_u32(&doc, "ip") {
             if let Some(port) = database::get_u32(&doc, "port") {
-                let Ok(minecraft) = doc.get_document("minecraft") else {
-                    continue;
-                };
-                let Ok(version) = minecraft.get_document("version") else {
-                    continue;
-                };
-                let protocol_version = version.get_i32("protocol").unwrap_or(47);
+                // let Ok(minecraft) = doc.get_document("minecraft") else {
+                //     continue;
+                // };
+                // let Ok(version) = doc.get_document("version") else {
+                //     continue;
+                // };
+                let protocol_version = doc.get_i32("protocol").unwrap_or(47);
 
                 let addr = Ipv4Addr::from(addr);
                 results.push((SocketAddrV4::new(addr, port as u16), protocol_version));

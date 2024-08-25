@@ -57,7 +57,7 @@ pub async fn get_ranges(
 
     let mut pipeline: Vec<Document> = Vec::new();
     pipeline.push(doc! { "$match": filter });
-    pipeline.push(doc! { "$project": { "addr": 1, "port": 1, "_id": 0 } });
+    pipeline.push(doc! { "$project": { "ip": 1, "port": 1, "_id": 0 } });
 
     let sort = sort.unwrap_or(Sort::Oldest);
 
@@ -81,34 +81,45 @@ pub async fn get_ranges(
         .unwrap();
 
     while let Some(Ok(doc)) = cursor.next().await {
-        let Some(addr) = database::get_u32(&doc, "addr") else {
-            warn!("couldn't get addr for doc: {doc:?}");
-            continue;
+        let ip_str = match doc.get_str("ip") {
+            Ok(ip) => ip,
+            Err(_) => {
+                warn!("Couldn't get IP for doc: {:?}", doc);
+                continue;
+            }
         };
+
+        let ip = match ip_str.parse::<Ipv4Addr>() {
+            Ok(addr) => addr,
+            Err(_) => {
+                warn!("Invalid IP address: {}", ip_str);
+                continue;
+            }
+        };
+
         let Some(port) = database::get_u32(&doc, "port") else {
             warn!("couldn't get port for doc: {doc:?}");
             continue;
         };
         // there shouldn't be any bad ips...
-        let addr = Ipv4Addr::from(addr);
-        if bad_ips.contains(&addr) && port != 25565 {
-            println!("we encountered a bad ip while getting ips to rescan :/ deleting {addr} from database.");
+        if bad_ips.contains(&ip) && port != 25565 {
+            println!("we encountered a bad ip while getting ips to rescan :/ deleting {ip} from database.");
             database
                 .client
                 .database("mcscanner")
                 .collection::<bson::Document>("servers")
                 .delete_many(doc! {
-                    "addr": u32::from(addr),
+                    "ip": ip_str,
                     "port": { "$ne": 25565 }
                 })
                 .await?;
             // this doesn't actually remove it from the bad_ips database, it just makes it
             // so we don't delete twice
-            bad_ips.remove(&addr);
+            bad_ips.remove(&ip);
             continue;
         }
 
-        ranges.push(ScanRange::single(addr, port as u16));
+        ranges.push(ScanRange::single(ip, port as u16));
         if ranges.len() % 1000 == 0 {
             println!("{} ips", ranges.len());
         }
