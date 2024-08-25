@@ -499,7 +499,7 @@ pub fn create_bulk_update(
 
     Ok(BulkUpdate {
         query: doc! {
-            "ip": { "$eq": u32::from(*target.ip()) },
+            "ip": { "$eq": target.ip().to_string() },
             "port": { "$eq": target.port() as u32 }
         },
         update: mongo_update,
