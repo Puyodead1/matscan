@@ -28,5 +28,5 @@ enabled = false
 rescan_every_secs = 600
 limit = 10_000
 [rescan2.filter]
-'minecraft.players.online' = { '$gte' = 1 }
-'minecraft.players.sample' = { '$exists' = true, '$ne' = [] }
+'onlinePlayers' = { '$gte' = 1 }
+'players' = { '$exists' = true, '$ne' = [] }

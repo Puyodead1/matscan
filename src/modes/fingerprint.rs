@@ -14,7 +14,7 @@ pub async fn get_addrs_and_protocol_versions(
     let mut results = Vec::new();
 
     let filter = doc! {
-        "timestamp": {
+        "lastSeen": {
             // must be online
             "$gt": bson::DateTime::from(SystemTime::now() - Duration::from_secs(60 * 60 * 2)),
         },
@@ -33,7 +33,7 @@ pub async fn get_addrs_and_protocol_versions(
 
     let mut pipeline: Vec<Document> = vec![doc! { "$match": filter }];
     pipeline.push(doc! { "$project": { "ip": 1, "port": 1, "protocol": 1, "_id": 0 } });
-    pipeline.push(doc! { "$sort": { "timestamp": 1 } });
+    pipeline.push(doc! { "$sort": { "lastSeen": 1 } });
 
     let mut cursor = database
         .servers_coll()
