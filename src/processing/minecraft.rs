@@ -47,177 +47,6 @@ impl ProcessableProtocol for protocols::Minecraft {
             }
         };
 
-        if config.snipe.enabled {
-            let mut previous_player_usernames = Vec::new();
-            {
-                let shared = shared.lock();
-                let cached_data = shared.cached_servers.get(&target);
-                // Usernames of players that were on the server last time we pinged it
-                if let Some(sample) = cached_data
-                    .and_then(|s| s.as_object())
-                    .and_then(|s| s.get("players"))
-                    .and_then(|s| s.as_object())
-                    .and_then(|s| s.get("sample"))
-                    .and_then(|s| s.as_array())
-                {
-                    for player in sample {
-                        if let Some(player) = player.as_object() {
-                            let username = player
-                                .get("name")
-                                .and_then(|s| s.as_str())
-                                .unwrap_or_default();
-                            previous_player_usernames.push(username.to_string());
-                        }
-                    }
-                }
-            }
-
-            let mut current_player_usernames = Vec::new();
-
-            if let Some(sample) = data
-                .as_object()
-                .and_then(|s| s.get("players"))
-                .and_then(|s| s.as_object())
-                .and_then(|s| s.get("sample"))
-                .and_then(|s| s.as_array())
-            {
-                for player in sample {
-                    if let Some(player) = player.as_object() {
-                        let username = player
-                            .get("name")
-                            .and_then(|s| s.as_str())
-                            .unwrap_or_default();
-
-                        current_player_usernames.push(username.to_string());
-                    }
-                }
-            }
-
-            let previous_anon_players_count = previous_player_usernames
-                .iter()
-                .filter(|&p| p == ANONYMOUS_PLAYER_NAME)
-                .count();
-            let current_anon_players_count = current_player_usernames
-                .iter()
-                .filter(|&p| p == ANONYMOUS_PLAYER_NAME)
-                .count();
-
-            for current_player in &current_player_usernames {
-                if config.snipe.usernames.contains(current_player) {
-                    println!("snipe: {current_player} is in {target}");
-
-                    if !previous_player_usernames.contains(current_player) {
-                        tokio::task::spawn(send_to_webhook(
-                            config.snipe.webhook_url.clone(),
-                            format!("{current_player} joined {target}"),
-                        ));
-                    }
-                }
-            }
-            for previous_player in &previous_player_usernames {
-                if config.snipe.usernames.contains(previous_player)
-                    && !current_player_usernames.contains(previous_player)
-                {
-                    tokio::task::spawn(send_to_webhook(
-                        config.snipe.webhook_url.clone(),
-                        format!("{previous_player} left {target}"),
-                    ));
-                }
-            }
-
-            if config.snipe.anon_players {
-                let version_name = data
-                    .as_object()
-                    .and_then(|s| s.get("version"))
-                    .and_then(|s| s.as_object())
-                    .and_then(|s| s.get("name"))
-                    .and_then(|s| s.as_str())
-                    .unwrap_or_default();
-                let online_players = data
-                    .as_object()
-                    .and_then(|s| s.get("players"))
-                    .and_then(|s| s.as_object())
-                    .and_then(|s| s.get("online"))
-                    .and_then(|s| s.as_i64())
-                    .unwrap_or_default();
-
-                let new_anon_players = current_anon_players_count - previous_anon_players_count;
-
-                let meets_new_anon_player_req = !previous_player_usernames.is_empty()
-                    && current_anon_players_count > previous_anon_players_count
-                    && new_anon_players >= 2;
-
-                let every_online_player_is_anon = current_player_usernames
-                    .iter()
-                    .all(|p| p == ANONYMOUS_PLAYER_NAME);
-                // there's some servers that have a bunch of bots that leave and join, and
-                // they're shown as anonymous players in the sample
-                let too_many_anon_players =
-                    current_anon_players_count >= 8 && every_online_player_is_anon;
-
-                let version_matches = version_name.contains("1.20.4");
-
-                if meets_new_anon_player_req
-                    && version_matches
-                    && online_players < 25
-                    && !too_many_anon_players
-                {
-                    tokio::task::spawn(send_to_webhook(
-                        config.snipe.webhook_url.clone(),
-                        format!("{new_anon_players} anonymous players joined **{target}**"),
-                    ));
-                } else if version_matches
-                    && previous_anon_players_count == 0
-                    && current_anon_players_count > 0
-                    && online_players < 25
-                {
-                    let webhook_url = config.snipe.webhook_url.clone();
-                    let database = database.clone();
-                    tokio::task::spawn(async move {
-                        // check that there were no anonymous players before
-                        let servers_coll = database.servers_coll();
-                        let current_data = servers_coll
-                            .find_one(doc! {
-                                "ip": target.ip().to_string(),
-                                "port": target.port() as u32
-                            })
-                            .await
-                            .unwrap_or_default()
-                            .unwrap_or_default();
-
-                        let mut historical_player_names = Vec::new();
-                        if let Some(sample) =
-                            current_data.get("players").and_then(|s| s.as_document())
-                        {
-                            for (_, player) in sample {
-                                if let Some(player) = player.as_document() {
-                                    let username = player
-                                        .get("name")
-                                        .and_then(|s| s.as_str())
-                                        .unwrap_or_default();
-                                    historical_player_names.push(username.to_string());
-                                }
-                            }
-                        }
-
-                        let has_historical_anon = historical_player_names
-                            .iter()
-                            .any(|p| p == ANONYMOUS_PLAYER_NAME);
-
-                        if !has_historical_anon {
-                            send_to_webhook(
-                                webhook_url,
-                                format!("anonymous player joined **{target}** for the first time"),
-                            )
-                            .await;
-                        }
-                    });
-                }
-            }
-
-            shared.lock().cached_servers.insert(target, data.clone());
-        }
-
         if let Some(cleaned_data) = clean_response_data(&data) {
             let mongo_update = doc! { "$set": cleaned_data };
             match create_bulk_update(database, &target, mongo_update) {
@@ -266,7 +95,10 @@ fn clean_response_data(data: &serde_json::Value) -> Option<Document> {
         data.insert("isModded", Bson::Boolean(true));
     }
 
-    if data.contains_key("forgeData") {
+    if data.contains_key("forgeData")
+        || data.contains_key("modinfo")
+        || data.contains_key("modpackData")
+    {
         data.insert("isModded", Bson::Boolean(true));
     }
 
@@ -277,11 +109,31 @@ fn clean_response_data(data: &serde_json::Value) -> Option<Document> {
         .and_then(|n| n.as_str())
         .unwrap_or_default();
 
+    let version_protocol = data
+        .get("version")
+        .and_then(|v| v.as_document())
+        .and_then(|v| v.get("protocol"))
+        .and_then(|p| p.as_i32())
+        .unwrap_or_default();
+
+    let max_players = data
+        .get("players")
+        .and_then(|p| p.as_document())
+        .and_then(|p| p.get("max"))
+        .and_then(|m| m.as_i32())
+        .unwrap_or_default();
+    let online_players = data
+        .get("players")
+        .and_then(|p| p.as_document())
+        .and_then(|p| p.get("online"))
+        .and_then(|m| m.as_i32())
+        .unwrap_or_default();
+
     if description.contains("Craftserve.pl - wydajny hosting Minecraft!")
         || description.contains("Ochrona DDoS: Przekroczono limit polaczen.")
         || description.contains("¨ |  ")
         || description.contains("Start the server at FalixNodes.net/start")
-        || description.contains("This server is offline Powered by FalixNodes.net")
+        || description.contains("This server is offline Powcered by FalixNodes.net")
         || description.contains("Serwer jest aktualnie wy")
         || description.contains("Blad pobierania statusu. Polacz sie bezposrednio!")
         || matches!(
@@ -351,7 +203,6 @@ fn clean_response_data(data: &serde_json::Value) -> Option<Document> {
                 }
             }
 
-            // TODO:
             let mut player_doc = Document::new();
             player_doc.insert(
                 "lastSeen",
@@ -375,23 +226,28 @@ fn clean_response_data(data: &serde_json::Value) -> Option<Document> {
             "lastSeen",
             Bson::DateTime(bson::DateTime::from_system_time(SystemTime::now())),
         );
-        // if has_players {
-        //     extra_data.insert(
-        //         "lastActive",
-        //         Bson::DateTime(bson::DateTime::from_system_time(SystemTime::now())),
-        //     );
-        // } else {
-        //     extra_data.insert(
-        //         "lastEmpty",
-        //         Bson::DateTime(bson::DateTime::from_system_time(SystemTime::now())),
-        //     );
-        // }
+        if has_players {
+            extra_data.insert(
+                "lastActive",
+                Bson::DateTime(bson::DateTime::from_system_time(SystemTime::now())),
+            );
+        } else {
+            extra_data.insert(
+                "lastEmpty",
+                Bson::DateTime(bson::DateTime::from_system_time(SystemTime::now())),
+            );
+        }
     }
 
     let mut final_cleaned = doc! {
         "updatedAt": bson::DateTime::from_system_time(SystemTime::now()),
-        // "minecraft": data,
+        "onlinePlayers": online_players,
+        "maxPlayers": max_players,
+        "version": version_name,
+        "protocol": version_protocol,
+        "description": description,
     };
+
     if !fake_sample {
         final_cleaned.extend(players_data);
     }
@@ -417,6 +273,7 @@ fn clean_response_data(data: &serde_json::Value) -> Option<Document> {
     //     );
     // }
 
+    // final_cleaned.extend(data);
     final_cleaned.extend(extra_data);
 
     Some(final_cleaned)
