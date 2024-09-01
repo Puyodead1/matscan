@@ -66,16 +66,29 @@ pub async fn get_addrs_and_protocol_versions(
 ) -> anyhow::Result<Vec<(SocketAddrV4, i32)>> {
     let mut results = Vec::new();
 
-    let two_weeks_ago = SystemTime::now() - Duration::from_secs(60 * 60 * 3600);
+    let two_hours_ago = SystemTime::now() - Duration::from_secs(60 * 60 * 2);
+    let over_a_week_ago = SystemTime::now() - Duration::from_secs(60 * 60 * 24 * 7);
     let filter = doc! {
         "lastSeen": {
-            "$gt": bson::DateTime::from(two_weeks_ago),
+            "$gt": bson::DateTime::from(two_hours_ago),
         },
-        "fingerprintTimestamp": { "$exists": false }
+        "$or": [
+            {
+                "fingerprintTimestamp": {
+                    "$lt": bson::DateTime::from(over_a_week_ago),
+                }
+            },
+            {
+                "fingerprintTimestamp": {
+                    "$exists": false
+                }
+            }
+        ]
     };
 
     // Debug prints (keep these)
-    println!("Two weeks ago: {:?}", two_weeks_ago);
+    println!("Two hours ago: {:?}", two_hours_ago);
+    println!("Over a week ago: {:?}", over_a_week_ago);
     println!("Filter: {:?}", filter);
 
     let mut pipeline: Vec<Document> = vec![doc! { "$match": filter.clone() }];
