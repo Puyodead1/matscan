@@ -138,12 +138,12 @@ impl Database {
                 let a = a
                     .as_document()
                     .unwrap()
-                    .get_datetime("lastSeen")
+                    .get_datetime("last_seen")
                     .expect("lastSeen must be present");
                 let b = b
                     .as_document()
                     .unwrap()
-                    .get_datetime("lastSeen")
+                    .get_datetime("last_seen")
                     .expect("lastSeen must be present");
                 a.cmp(b)
             });
@@ -183,7 +183,7 @@ impl Database {
                 doc! { "ip": addr.to_string() },
                 doc! {
                     "$set": {
-                        "lastSeen": Bson::DateTime(bson::DateTime::from_system_time(SystemTime::now())),
+                        "last_seen": Bson::DateTime(bson::DateTime::from_system_time(SystemTime::now())),
                     }
                 },
             )
@@ -252,7 +252,7 @@ pub async fn collect_all_servers(
             }
 
             doc! {
-                "lastSeen": {
+                "last_seen": {
                     // up to 30 days ago
                     "$gt": bson::DateTime::from(SystemTime::now() - Duration::from_secs(60 * 60 * 24 * 30)),
                 }
@@ -296,7 +296,7 @@ pub async fn collect_all_servers(
             }
 
             doc! {
-                "lastSeen": {
+                "last_seen": {
                     // up to 365 days ago
                     "$gt": bson::DateTime::from(SystemTime::now() - std::time::Duration::from_secs(60 * 60 * 24 * 365)),
                 }

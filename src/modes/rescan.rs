@@ -32,7 +32,7 @@ pub async fn get_ranges(
     let mut ranges = Vec::new();
 
     let mut filter = doc! {
-        "lastSeen": {
+        "last_seen": {
             "$gt": bson::DateTime::from(SystemTime::now() - Duration::from_secs(last_ping_ago_max_secs)),
             "$lt": bson::DateTime::from(SystemTime::now() - Duration::from_secs(rescan_every_secs))
         }
@@ -66,7 +66,7 @@ pub async fn get_ranges(
             pipeline.push(doc! { "$sample": { "size": limit.unwrap_or(10000000) as i64 } });
         }
         Sort::Oldest => {
-            pipeline.push(doc! { "$sort": { "lastSeen": 1 } });
+            pipeline.push(doc! { "$sort": { "last_seen": 1 } });
             if let Some(limit) = limit {
                 pipeline.push(doc! { "$limit": limit as i64 });
             }

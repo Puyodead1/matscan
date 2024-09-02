@@ -69,17 +69,17 @@ pub async fn get_addrs_and_protocol_versions(
     let two_hours_ago = SystemTime::now() - Duration::from_secs(60 * 60 * 2);
     let over_a_week_ago = SystemTime::now() - Duration::from_secs(60 * 60 * 24 * 7);
     let filter = doc! {
-        "lastSeen": {
+        "last_seen": {
             "$gt": bson::DateTime::from(two_hours_ago),
         },
         "$or": [
             {
-                "fingerprintTimestamp": {
+                "fingerprint_timestamp": {
                     "$lt": bson::DateTime::from(over_a_week_ago),
                 }
             },
             {
-                "fingerprintTimestamp": {
+                "fingerprint_timestamp": {
                     "$exists": false
                 }
             }

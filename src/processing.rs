@@ -136,7 +136,7 @@ async fn flush_bulk_updates(
             .into_iter()
             .map(|mut bulk_update| {
                 bulk_update.query.insert(
-                    "lastSeen",
+                    "last_seen",
                     doc! {
                         "$gt": &reviving_cutoff,
                     },
@@ -153,7 +153,7 @@ async fn flush_bulk_updates(
             .map(|mut bulk_update| {
                 bulk_update
                     .query
-                    .insert("lastSeen", doc! { "$lte": &reviving_cutoff });
+                    .insert("last_seen", doc! { "$lte": &reviving_cutoff });
                 bulk_update
             })
             .collect::<Vec<_>>();

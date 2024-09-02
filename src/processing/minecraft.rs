@@ -205,7 +205,7 @@ fn clean_response_data(data: &serde_json::Value) -> Option<Document> {
 
             let mut player_doc = Document::new();
             player_doc.insert(
-                "lastSeen",
+                "last_seen",
                 Bson::DateTime(bson::DateTime::from_system_time(SystemTime::now())),
             );
             player_doc.insert("name", Bson::String(name.to_string()));
@@ -223,7 +223,7 @@ fn clean_response_data(data: &serde_json::Value) -> Option<Document> {
             extra_data.insert("isCracked", Bson::Boolean(is_online_mode));
         }
         extra_data.insert(
-            "lastSeen",
+            "last_seen",
             Bson::DateTime(bson::DateTime::from_system_time(SystemTime::now())),
         );
         if has_players {
@@ -240,9 +240,9 @@ fn clean_response_data(data: &serde_json::Value) -> Option<Document> {
     }
 
     let mut final_cleaned = doc! {
-        "updatedAt": bson::DateTime::from_system_time(SystemTime::now()),
-        "onlinePlayers": online_players,
-        "maxPlayers": max_players,
+        "updated_at": bson::DateTime::from_system_time(SystemTime::now()),
+        "online_players": online_players,
+        "max_players": max_players,
         "version": version_name,
         "protocol": version_protocol,
         "description": description,
@@ -298,7 +298,7 @@ pub fn create_bulk_update(
         let description = set_data.get_str("description").unwrap_or_default();
         let version_name = set_data.get_str("version").unwrap_or_default();
         let version_protocol = database::get_i32(set_data, "protocol").unwrap_or_default();
-        let max_players = database::get_i32(set_data, "maxPlayers").unwrap_or_default();
+        let max_players = database::get_i32(set_data, "max_players").unwrap_or_default();
 
         let mut hasher = DefaultHasher::new();
         (description, version_name, version_protocol, max_players).hash(&mut hasher);
