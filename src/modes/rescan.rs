@@ -106,8 +106,8 @@ pub async fn get_ranges(
             println!("we encountered a bad ip while getting ips to rescan :/ deleting {ip} from database.");
             database
                 .client
-                .database("mcscanner")
-                .collection::<bson::Document>("servers")
+                .database("cope_new")
+                .collection::<bson::Document>("cachedservers")
                 .delete_many(doc! {
                     "ip": ip_str,
                     "port": { "$ne": 25565 }

@@ -162,11 +162,11 @@ async fn flush_bulk_updates(
 
         let db = database.mcscanner_database();
         let result_not_reviving = db
-            .collection::<bson::Document>("servers")
+            .collection::<bson::Document>("cachedservers")
             .bulk_update(&db, bulk_updates_not_reviving)
             .await?;
         let result_reviving = db
-            .collection::<bson::Document>("servers")
+            .collection::<bson::Document>("cachedservers")
             .bulk_update(&db, &bulk_updates_reviving)
             .await?;
 
@@ -193,7 +193,7 @@ async fn flush_bulk_updates(
         // fingerprinting so reviving/inserting doesn't make sense
         let db = database.mcscanner_database();
         let result = db
-            .collection::<bson::Document>("servers")
+            .collection::<bson::Document>("cachedservers")
             .bulk_update(&db, bulk_updates)
             .await?;
         updated_count = result.nb_modified as usize;

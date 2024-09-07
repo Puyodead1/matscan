@@ -48,14 +48,14 @@ impl Database {
 
         // ping the database to make sure it's up
         client
-            .database("mcscanner")
+            .database("cope_new")
             .run_command(doc! {"ping": 1})
             .await?;
 
         // download bad ips
         let mut bad_ips = HashSet::new();
         let mut cursor = client
-            .database("mcscanner")
+            .database("cope_new")
             .collection::<Document>("bad_servers")
             .find(doc! {})
             .await
@@ -98,8 +98,8 @@ impl Database {
     pub async fn delete_spam_historical_players(&self) {
         let collection = self
             .client
-            .database("mcscanner")
-            .collection::<Document>("servers");
+            .database("cope_new")
+            .collection::<Document>("cachedservers");
 
         let mut cursor = collection
             .aggregate(
@@ -166,18 +166,19 @@ impl Database {
     }
 
     pub fn mcscanner_database(&self) -> mongodb::Database {
-        self.client.database("mcscanner")
+        self.client.database("cope_new")
     }
 
     pub fn servers_coll(&self) -> Collection<Document> {
-        self.mcscanner_database().collection::<Document>("servers")
+        self.mcscanner_database()
+            .collection::<Document>("cachedservers")
     }
 
     pub async fn add_to_bad_ips(self, addr: Ipv4Addr) -> anyhow::Result<()> {
         self.shared.lock().bad_ips.insert(addr);
 
         self.client
-            .database("mcscanner")
+            .database("cope_new")
             .collection::<Document>("bad_servers")
             .update_one(
                 doc! { "ip": addr.to_string() },
@@ -194,8 +195,8 @@ impl Database {
         // delete all servers with this ip that aren't on 25565
         let r = self
             .client
-            .database("mcscanner")
-            .collection::<Document>("servers")
+            .database("cope_new")
+            .collection::<Document>("cachedservers")
             .delete_many(doc! {
                 "ip": addr.to_string(),
                 "port": { "$ne": 25565 }
