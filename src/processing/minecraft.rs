@@ -133,7 +133,7 @@ fn clean_response_data(data: &serde_json::Value) -> Option<Document> {
         || description.contains("Ochrona DDoS: Przekroczono limit polaczen.")
         || description.contains("¨ |  ")
         || description.contains("Start the server at FalixNodes.net/start")
-        || description.contains("This server is offline Powcered by FalixNodes.net")
+        || description.contains("This server is offline Powered by FalixNodes.net")
         || description.contains("Serwer jest aktualnie wy")
         || description.contains("Blad pobierania statusu. Polacz sie bezposrednio!")
         || matches!(
